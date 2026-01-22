@@ -220,6 +220,7 @@ By default, ExUnitOpenAPI merges with the existing spec file, preserving any man
 - [x] Router analysis for path patterns
 - [x] OpenAPI 3.0 generation
 - [ ] Schema deduplication with `$ref`
+- [ ] **Security scheme support** (auto-detect from headers, global defaults, per-endpoint overrides)
 - [ ] YAML output format
 - [ ] Test metadata for descriptions/tags
 - [ ] Request validation mode
