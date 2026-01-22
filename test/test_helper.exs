@@ -1,3 +1,6 @@
+# Suppress noisy logs during tests
+Logger.configure(level: :warning)
+
 # Configure the test endpoint
 Application.put_env(:exunit_openapi, ExUnitOpenAPI.TestApp.Endpoint,
   http: [port: 4002],
