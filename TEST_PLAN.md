@@ -2,7 +2,7 @@
 
 ## Current Status
 - **108 tests passing**
-- Manual integration test against data-api (16 endpoints generated)
+- Manual integration test against personal project (16 endpoints generated)
 - Priority 1 tests complete
 - Partial Priority 2 coverage via regression tests
 

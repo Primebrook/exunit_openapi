@@ -75,6 +75,6 @@ First working version of ExUnitOpenAPI. Generates OpenAPI 3.0.3 specifications f
 - Regression tests: Bug fixes for iolist, unfetched params, telemetry event
 
 ### Integration Testing
-- Tested against Zappi data-api project
+- Tested against personal project
 - Generated spec for 16 endpoints from 50 API controller tests
 - Validated output in Swagger Editor

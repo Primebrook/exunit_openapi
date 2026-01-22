@@ -21,7 +21,7 @@ Inspired by Ruby's [rspec-openapi](https://github.com/exoego/rspec-openapi).
 | Version | 0.1.0 (MVP) |
 | Tests | 108 passing |
 | Test Coverage | Priority 1 complete, Priority 2 partial |
-| Validated Against | Zappi data-api (16 endpoints from 50 tests) |
+| Validated Against | Personal Project (16 endpoints from 50 tests) |
 
 ### What Works Today
 
