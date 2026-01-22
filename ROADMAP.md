@@ -135,6 +135,106 @@ Smarter schema generation with deduplication and enhanced type detection.
 
 ---
 
+### v0.2.5 - Security Scheme Support
+
+**Status: Not Started**
+
+Comprehensive security scheme support for OpenAPI specs, from auto-detection to manual overrides.
+
+#### Background
+
+OpenAPI security has three levels:
+1. **Security scheme definitions** (`components.securitySchemes`) - defines available auth methods
+2. **Global security** (root-level `security`) - default for all operations
+3. **Operation security** (per-operation `security`) - overrides for specific endpoints
+
+Currently only #1 is partially implemented (manual config, not applied to operations).
+
+#### Planned Features
+
+**Tier 1: Foundation**
+- [ ] **Apply security to operations**: Use configured `security_schemes` to add `security` property to operations
+- [ ] **Global default security**: New config option `default_security: [%{"BearerAuth" => []}]` applied to all operations
+- [ ] **Root-level security**: Add global `security` to spec when `default_security` is configured
+
+**Tier 2: Auto-Detection**
+- [ ] **Detect auth from request headers**: Analyze captured `request_headers` for common patterns:
+  - `authorization: Bearer xxx` → http/bearer scheme
+  - `authorization: Basic xxx` → http/basic scheme
+  - `x-api-key: xxx` or `api-key: xxx` → apiKey in header
+  - Custom header patterns via config
+- [ ] **Auto-generate security schemes**: Create scheme definitions from detected patterns
+- [ ] **Per-endpoint security inference**: Apply detected security only to endpoints that used auth headers
+
+**Tier 3: Overrides**
+- [ ] **Test tag overrides**: `@tag openapi: [security: [...]]` for endpoint-specific security
+- [ ] **Disable security**: `@tag openapi: [security: :none]` for public endpoints
+- [ ] **Config-based overrides**: `security_overrides: %{path_pattern => security_config}`
+- [ ] **Controller-level defaults**: Security applied to all actions in a controller
+
+#### Configuration Example
+
+```elixir
+config :exunit_openapi,
+  router: MyAppWeb.Router,
+
+  # Define available security schemes
+  security_schemes: %{
+    "BearerAuth" => %{
+      "type" => "http",
+      "scheme" => "bearer",
+      "bearerFormat" => "JWT"
+    },
+    "ApiKeyAuth" => %{
+      "type" => "apiKey",
+      "in" => "header",
+      "name" => "X-API-Key"
+    }
+  },
+
+  # Global default (applied to all endpoints unless overridden)
+  default_security: [%{"BearerAuth" => []}],
+
+  # Auto-detection settings
+  auto_detect_security: true,
+  security_header_patterns: %{
+    "authorization" => :auto,  # Auto-detect Bearer/Basic
+    "x-api-key" => "ApiKeyAuth"
+  },
+
+  # Path-based overrides
+  security_overrides: %{
+    "GET /api/health" => :none,           # Public endpoint
+    "POST /api/admin/*" => [%{"BearerAuth" => []}, %{"ApiKeyAuth" => []}]
+  }
+```
+
+#### Test Tag Example
+
+```elixir
+# Override security for specific test
+@tag openapi: [security: [%{"ApiKeyAuth" => []}]]
+test "api key protected endpoint", %{conn: conn} do
+  conn = put_req_header(conn, "x-api-key", "secret")
+  # ...
+end
+
+# Mark as public (no security required)
+@tag openapi: [security: :none]
+test "public health check", %{conn: conn} do
+  # ...
+end
+```
+
+#### Success Criteria
+- Operations have appropriate `security` property in generated spec
+- Auto-detection correctly identifies Bearer, Basic, and API key auth from test headers
+- Manual overrides take precedence over auto-detection
+- Public endpoints can be explicitly marked as requiring no auth
+- Backward compatible - existing configs work without changes
+
+---
+
 ### v0.3.0 - Developer Experience
 
 **Status: Not Started**
@@ -332,9 +432,10 @@ end
 ## Open Questions
 
 1. **Ecto schema integration**: Should we optionally read Ecto schemas for enhanced type info?
-2. **Authentication inference**: Can we detect auth requirements from plugs?
+2. ~~**Authentication inference**: Can we detect auth requirements from plugs?~~ → **Addressed in v0.2.5** (detecting from request headers; plug-based detection could be future enhancement)
 3. **Error response patterns**: Should we detect common patterns like `{:error, changeset}`?
 4. **LiveView support**: Is there value in documenting LiveView events?
+5. **Plug-based security detection**: Should we analyze router pipelines for auth plugs? (Enhancement to v0.2.5)
 
 ---
 
