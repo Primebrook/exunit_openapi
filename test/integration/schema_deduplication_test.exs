@@ -229,13 +229,24 @@ defmodule ExUnitOpenAPI.Integration.SchemaDeduplicationTest do
       assert {:ok, _} = Jason.decode(json_dedup)
       assert {:ok, _} = Jason.decode(json_inline)
 
-      # Log sizes for visibility (not a hard assertion since size depends on naming)
-      IO.puts("\n  Deduplicated spec size: #{byte_size(json_dedup)} bytes")
-      IO.puts("  Inline spec size: #{byte_size(json_inline)} bytes")
-
       # The deduplicated spec should use $refs (verify by checking for the string)
-      if Map.get(spec_dedup["components"], "schemas", %{}) |> map_size() > 0 do
+      schema_count = Map.get(spec_dedup["components"], "schemas", %{}) |> map_size()
+
+      if schema_count > 0 do
         assert String.contains?(json_dedup, "#/components/schemas/")
+      end
+
+      # Count how many times $refs are used in the spec
+      ref_count = json_dedup |> String.split("#/components/schemas/") |> length() |> Kernel.-(1)
+
+      # Assert size reduction only when there's significant schema reuse
+      # (deduplication overhead exceeds savings with small schemas and few repetitions)
+      # Rule: refs should be used more than 2x the number of schemas for net savings
+      if ref_count > schema_count * 2 do
+        assert byte_size(json_dedup) < byte_size(json_inline),
+               "Expected deduplicated spec (#{byte_size(json_dedup)} bytes) " <>
+                 "to be smaller than inline spec (#{byte_size(json_inline)} bytes) " <>
+                 "with #{ref_count} refs to #{schema_count} schemas"
       end
     end
   end
