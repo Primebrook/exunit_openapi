@@ -22,6 +22,16 @@ defmodule ExUnitOpenAPI.TypeInferrer do
   - UUIDs → `{"type": "string", "format": "uuid"}`
   - Email addresses → `{"type": "string", "format": "email"}`
   - URIs → `{"type": "string", "format": "uri"}`
+
+  ## Nullable Detection
+
+  When merging schemas, if any value is null, the merged schema gets
+  `"nullable": true` (OpenAPI 3.0 style).
+
+  ## Enum Inference
+
+  When `infer_with_samples/2` is used with multiple sample values for
+  a string field, and there are few unique values, an enum is inferred.
   """
 
   @uuid_regex ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -87,18 +97,88 @@ defmodule ExUnitOpenAPI.TypeInferrer do
   This is useful when the same endpoint returns slightly different
   response shapes in different tests.
 
+  When one of the schemas is a null type, the merged result will have
+  `"nullable": true` added.
+
   ## Example
 
       iex> TypeInferrer.merge_schemas([schema1, schema2])
       %{"type" => "object", "properties" => %{...combined...}}
+
+      iex> TypeInferrer.merge_schemas([%{"type" => "string"}, %{"type" => "null"}])
+      %{"type" => "string", "nullable" => true}
   """
   @spec merge_schemas(list(json_schema())) :: json_schema()
   def merge_schemas([]), do: %{}
   def merge_schemas([schema]), do: schema
 
   def merge_schemas(schemas) do
-    schemas
-    |> Enum.reduce(%{}, &deep_merge_schema/2)
+    has_null = Enum.any?(schemas, &(&1["type"] == "null"))
+    non_null_schemas = Enum.reject(schemas, &(&1["type"] == "null"))
+
+    merged =
+      case non_null_schemas do
+        [] -> %{}
+        [single] -> single
+        multiple -> merge_non_null_schemas(multiple)
+      end
+
+    if has_null and merged != %{} do
+      Map.put(merged, "nullable", true)
+    else
+      merged
+    end
+  end
+
+  @doc """
+  Infers a schema from multiple sample values, potentially detecting enums.
+
+  When given multiple string samples with a limited set of unique values,
+  this function can infer an enum type.
+
+  ## Options
+
+  - `:enum_inference` - Enable enum detection (default: true)
+  - `:enum_min_samples` - Minimum samples needed to consider enum (default: 3)
+  - `:enum_max_values` - Maximum unique values to be considered an enum (default: 10)
+
+  ## Examples
+
+      iex> TypeInferrer.infer_with_samples(["pending", "active", "pending", "completed"])
+      %{"type" => "string", "enum" => ["active", "completed", "pending"]}
+
+      iex> TypeInferrer.infer_with_samples([1, 2, 3])
+      %{"type" => "integer"}
+  """
+  @spec infer_with_samples(list(term()), keyword()) :: json_schema()
+  def infer_with_samples(samples, opts \\ [])
+
+  def infer_with_samples([], _opts), do: %{}
+
+  def infer_with_samples(samples, opts) do
+    enum_inference = Keyword.get(opts, :enum_inference, true)
+    enum_min_samples = Keyword.get(opts, :enum_min_samples, 3)
+    enum_max_values = Keyword.get(opts, :enum_max_values, 10)
+
+    # First, get the basic merged schema
+    schemas = Enum.map(samples, &infer/1)
+    base_schema = merge_schemas(schemas)
+
+    # Check if we should infer an enum
+    if enum_inference and base_schema["type"] == "string" do
+      non_nil_samples = Enum.reject(samples, &is_nil/1)
+      unique_values = non_nil_samples |> Enum.uniq() |> Enum.sort()
+
+      if length(non_nil_samples) >= enum_min_samples and
+           length(unique_values) <= enum_max_values and
+           length(unique_values) < length(non_nil_samples) do
+        Map.put(base_schema, "enum", unique_values)
+      else
+        base_schema
+      end
+    else
+      base_schema
+    end
   end
 
   @doc """
@@ -134,12 +214,50 @@ defmodule ExUnitOpenAPI.TypeInferrer do
   defp infer_array_items([]), do: %{}
 
   defp infer_array_items(items) when is_list(items) do
-    items
-    |> Enum.map(&infer/1)
-    |> merge_schemas()
+    schemas = Enum.map(items, &infer/1)
+
+    # Check if we have genuinely mixed types (not just nullable)
+    types = schemas |> Enum.map(&Map.get(&1, "type")) |> Enum.uniq()
+    non_null_types = Enum.reject(types, &(&1 == "null"))
+
+    case non_null_types do
+      [] ->
+        # All nulls
+        %{}
+
+      [_single_type] ->
+        # Single type (possibly with null) - use merge_schemas for nullable handling
+        merge_schemas(schemas)
+
+      _multiple_types ->
+        # Genuinely mixed types - use oneOf
+        non_null_schemas = Enum.reject(schemas, &(&1["type"] == "null"))
+        unique_schemas = Enum.uniq(non_null_schemas)
+
+        if Enum.any?(schemas, &(&1["type"] == "null")) do
+          %{"oneOf" => unique_schemas, "nullable" => true}
+        else
+          %{"oneOf" => unique_schemas}
+        end
+    end
   end
 
   defp infer_array_items(_), do: %{}
+
+  # Merge multiple non-null schemas, handling mixed types with oneOf
+  defp merge_non_null_schemas(schemas) do
+    types = schemas |> Enum.map(&Map.get(&1, "type")) |> Enum.uniq()
+
+    case types do
+      [_single_type] ->
+        # All same type - deep merge
+        Enum.reduce(schemas, %{}, &deep_merge_schema/2)
+
+      _multiple_types ->
+        # Mixed types - use oneOf
+        %{"oneOf" => Enum.uniq(schemas)}
+    end
+  end
 
   defp infer_properties(map) when is_map(map) do
     map
