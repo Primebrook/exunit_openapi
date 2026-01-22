@@ -1,10 +1,11 @@
-# Test Plan for ExUnitOpenAPI v0.1.0
+# Test Plan for ExUnitOpenAPI v0.2.0
 
 ## Current Status
-- **108 tests passing**
+- **175+ tests passing**
 - Manual integration test against personal project (16 endpoints generated)
 - Priority 1 tests complete
 - Partial Priority 2 coverage via regression tests
+- v0.2.0 schema deduplication tests complete
 
 ## Test Files
 
@@ -14,10 +15,14 @@
 | `test/exunit_openapi/config_test.exs` | 18 | Config loading and accessors |
 | `test/exunit_openapi/generator_test.exs` | Unit tests for OpenAPI spec generation |
 | `test/exunit_openapi/router_analyzer_test.exs` | Unit tests for Phoenix router analysis |
-| `test/exunit_openapi/type_inferrer_test.exs` | Unit tests for JSON Schema inference |
+| `test/exunit_openapi/type_inferrer_test.exs` | 40 | JSON Schema inference (incl. enum, nullable) |
 | `test/exunit_openapi/regression_test.exs` | 14 | Regression tests for fixed bugs |
+| `test/exunit_openapi/schema_fingerprint_test.exs` | 11 | Schema identity hashing (v0.2.0) |
+| `test/exunit_openapi/schema_namer_test.exs` | 15 | Schema naming and overrides (v0.2.0) |
+| `test/exunit_openapi/schema_registry_test.exs` | 14 | Deduplication registry (v0.2.0) |
 | `test/integration/end_to_end_test.exs` | 9 | Full flow integration tests |
 | `test/integration/telemetry_test.exs` | 9 | Telemetry handler integration |
+| `test/integration/schema_deduplication_test.exs` | 5 | Schema deduplication flow (v0.2.0) |
 | `test/mix/tasks/openapi_generate_test.exs` | 8 | Mix task option parsing |
 
 ## Test Infrastructure
@@ -75,6 +80,53 @@ test/support/
 - [x] Info keyword list normalized to map
 - [x] All accessor functions work
 - [x] Edge cases (empty info, nil values, unknown keys)
+
+### v0.2.0: Schema Deduplication Tests ✅
+
+#### SchemaFingerprint
+- [x] Returns 64-character hex fingerprint
+- [x] Identical schemas produce identical fingerprints
+- [x] Property order does not affect fingerprint
+- [x] Different schemas produce different fingerprints
+- [x] Nested schema property order independence
+- [x] Array items fingerprinted correctly
+- [x] Empty and non-map input handling
+
+#### SchemaNamer
+- [x] Generates names from controller and action
+- [x] Create/Update/Delete action prefixes
+- [x] Error suffixes for 400/401/403/404/422 status
+- [x] Generates names from path when no controller
+- [x] Test tag overrides (`@tag openapi: [response_schema: "Name"]`)
+- [x] Config overrides via `schema_names` option
+- [x] Test tag takes precedence over config
+- [x] Collision resolution (User, User2, User3)
+
+#### SchemaRegistry
+- [x] Creates registry with config
+- [x] Extracts top-level schemas and returns $ref
+- [x] Returns same $ref for identical schemas
+- [x] Different $refs for different schemas
+- [x] Deduplication disabled returns inline schema
+- [x] Empty schemas unchanged
+- [x] force_inline option
+- [x] Finalize returns named schemas map
+- [x] Process nested object properties
+- [x] Process array items
+
+#### TypeInferrer Enhancements
+- [x] Nullable detection when merging with null
+- [x] oneOf for mixed types
+- [x] infer_with_samples enum detection
+- [x] infer_merged for property-level enum detection
+- [x] infer_merged nested object handling
+- [x] infer_merged optional property nullable marking
+
+#### Integration
+- [x] Schema deduplication end-to-end
+- [x] $ref generation in responses
+- [x] Config-based schema name override
+- [x] Test tag schema name override
 
 ### Priority 2: Edge Cases (Partial)
 

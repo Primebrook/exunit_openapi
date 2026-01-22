@@ -2,6 +2,57 @@
 
 All notable changes to ExUnitOpenAPI will be documented in this file.
 
+## [0.2.0] - 2026-01-22
+
+### Schema Deduplication & Enhanced Type Inference
+
+This release adds intelligent schema deduplication with `$ref` support, enum inference, and nullable field detection.
+
+#### Added
+
+- **Schema deduplication with `$ref`**: Identical schemas are automatically deduplicated using JSON Reference pointers. Extracted schemas appear in `components/schemas`.
+- **Schema naming**: Context-aware names like `UserResponse`, `CreateUserRequest`, `UserNotFoundError` generated automatically from controller, action, and status.
+- **Schema name overrides**: Two ways to customize schema names:
+  - Config: `schema_names: %{{UserController, :show, :response, 200} => "UserProfile"}`
+  - Test tags: `@tag openapi: [response_schema: "CustomName"]`
+- **Enum inference**: String fields with limited unique values across requests are inferred as enums.
+- **Nullable detection**: Properties missing in some requests are marked `nullable: true`.
+- **oneOf support**: Arrays with genuinely mixed types (not just nullable) use `oneOf`.
+- **New `infer_merged/2` function**: Aggregates values by property for proper enum detection.
+
+#### New Modules
+
+- `ExUnitOpenAPI.SchemaFingerprint` - Deterministic SHA256 hashing for schema identity
+- `ExUnitOpenAPI.SchemaNamer` - Context-based schema naming with collision resolution
+- `ExUnitOpenAPI.SchemaRegistry` - Central registry for deduplication and `$ref` generation
+
+#### New Configuration Options
+
+```elixir
+config :exunit_openapi,
+  schema_deduplication: true,        # Enable $ref deduplication (default: true)
+  schema_names: %{},                 # Override inferred schema names
+  extract_single_use: false,         # Extract schemas used only once
+  min_properties_for_extraction: 3,  # Min properties for nested extraction
+  enum_inference: true,              # Auto-detect enums (default: true)
+  enum_min_samples: 3,               # Min samples for enum detection
+  enum_max_values: 10                # Max unique values for enum
+```
+
+#### Changed
+
+- Generator now uses `SchemaRegistry` for all schema handling
+- `TypeInferrer.merge_schemas/1` now properly handles nullable detection
+- Response and request body schemas are registered and potentially extracted
+
+#### Tests
+
+- 175+ tests passing (up from 108)
+- New test files for schema modules
+- Integration tests for schema deduplication
+
+---
+
 ## [0.1.0] - 2026-01-22
 
 ### Initial Release - MVP
@@ -46,11 +97,17 @@ First working version of ExUnitOpenAPI. Generates OpenAPI 3.0.3 specifications f
 
 ## Roadmap
 
-### Phase 2 (v0.2.0) - Enhanced Type Inference
-- [ ] Schema deduplication with `$ref`
-- [ ] Component schema generation
-- [ ] Enum inference from repeated string values
-- [ ] Nullable field detection
+### Phase 2 (v0.2.0) - Enhanced Type Inference ✅
+- [x] Schema deduplication with `$ref`
+- [x] Component schema generation
+- [x] Enum inference from repeated string values
+- [x] Nullable field detection
+- [x] Schema naming with overrides
+
+### Phase 2.5 (v0.2.5) - Security Scheme Support
+- [ ] Apply security to operations
+- [ ] Auto-detect security from request headers
+- [ ] Test tag overrides for security
 
 ### Phase 3 (v0.3.0) - Developer Experience
 - [ ] Optional test metadata for descriptions/tags
@@ -69,9 +126,10 @@ First working version of ExUnitOpenAPI. Generates OpenAPI 3.0.3 specifications f
 ## Testing Status
 
 ### Library Tests
-- **108 tests passing**
+- **175+ tests passing**
 - Unit tests: TypeInferrer, RouterAnalyzer, Collector, Generator, Config
-- Integration tests: End-to-end flow, telemetry capture
+- Unit tests: SchemaFingerprint, SchemaNamer, SchemaRegistry (v0.2.0)
+- Integration tests: End-to-end flow, telemetry capture, schema deduplication
 - Regression tests: Bug fixes for iolist, unfetched params, telemetry event
 
 ### Integration Testing

@@ -18,8 +18,8 @@ Inspired by Ruby's [rspec-openapi](https://github.com/exoego/rspec-openapi).
 
 | Metric | Value |
 |--------|-------|
-| Version | 0.1.0 (MVP) |
-| Tests | 108 passing |
+| Version | 0.2.0 (Enhanced Type Inference) |
+| Tests | 175+ passing |
 | Test Coverage | Priority 1 complete, Priority 2 partial |
 | Validated Against | Personal Project (16 endpoints from 50 tests) |
 
@@ -75,6 +75,9 @@ lib/
 │   ├── type_inferrer.ex        # JSON Schema inference
 │   ├── generator.ex            # OpenAPI spec generation
 │   ├── config.ex               # Configuration management
+│   ├── schema_fingerprint.ex   # Schema identity hashing (v0.2.0)
+│   ├── schema_namer.ex         # Context-based schema naming (v0.2.0)
+│   ├── schema_registry.ex      # Deduplication registry (v0.2.0)
 │   └── application.ex          # OTP application
 └── mix/tasks/
     └── openapi.generate.ex     # Mix task
@@ -114,24 +117,43 @@ The minimum viable product that generates useful OpenAPI specs from existing Pho
 
 ---
 
-### v0.2.0 - Enhanced Type Inference
+### v0.2.0 - Enhanced Type Inference ✅
 
-**Status: Not Started**
+**Status: Complete**
 
 Smarter schema generation with deduplication and enhanced type detection.
 
-#### Planned Features
-- [ ] **Schema deduplication with `$ref`**: Detect similar response structures, create reusable component schemas
-- [ ] **Component schema generation**: Move repeated schemas to `#/components/schemas/`
-- [ ] **Schema naming**: Generate meaningful names (`UserShowResponse`, `CreateUserRequest`)
-- [ ] **Enum inference**: Detect repeated string values and generate enum types
-- [ ] **Nullable field detection**: Track when fields are sometimes null
-- [ ] **oneOf/anyOf for mixed types**: Handle arrays with mixed types properly
+#### Features Delivered
+- [x] **Schema deduplication with `$ref`**: Identical schemas are detected and reused via `$ref` pointers
+- [x] **Component schema generation**: Extracted schemas placed in `#/components/schemas/`
+- [x] **Schema naming**: Generate meaningful names (`UserResponse`, `CreateUserRequest`, `UserNotFoundError`)
+- [x] **Schema name overrides**: Config-based and test tag-based overrides for schema names
+- [x] **Enum inference**: Detects repeated string values and generates enum types
+- [x] **Nullable field detection**: Tracks when fields are sometimes null across requests
+- [x] **oneOf for mixed types**: Arrays with genuinely mixed types use `oneOf`
+
+#### New Modules
+- `SchemaFingerprint` - Deterministic hashing for schema identity comparison
+- `SchemaNamer` - Context-based name generation with override support
+- `SchemaRegistry` - Central registry for deduplication and `$ref` generation
+
+#### New Configuration Options
+```elixir
+config :exunit_openapi,
+  schema_deduplication: true,        # Enable $ref deduplication
+  schema_names: %{},                 # Override inferred schema names
+  extract_single_use: false,         # Extract schemas used only once
+  min_properties_for_extraction: 3,  # Min properties for nested extraction
+  enum_inference: true,              # Auto-detect enums
+  enum_min_samples: 3,               # Min samples for enum detection
+  enum_max_values: 10                # Max unique values for enum
+```
 
 #### Success Criteria
-- Generated specs are 50%+ smaller due to deduplication
-- Schema names are human-readable and consistent
-- Nullable fields correctly documented
+- ✅ Schema deduplication via `$ref` implemented
+- ✅ Schema names are human-readable and consistent
+- ✅ Nullable fields correctly documented
+- ✅ Enum inference working at property level
 
 ---
 
