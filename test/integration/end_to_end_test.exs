@@ -13,6 +13,17 @@ defmodule ExUnitOpenAPI.Integration.EndToEndTest do
 
   @handler_id "test-openapi-collector"
 
+  # Helper to resolve $ref in a schema - returns the actual schema from components
+  defp resolve_schema(schema, spec) do
+    case schema do
+      %{"$ref" => "#/components/schemas/" <> name} ->
+        spec["components"]["schemas"][name]
+
+      _ ->
+        schema
+    end
+  end
+
   setup do
     # Start a fresh collector for each test
     # Stop existing collector if running
@@ -80,7 +91,8 @@ defmodule ExUnitOpenAPI.Integration.EndToEndTest do
       response = operation["responses"]["200"]
       assert response["description"] == "Successful response"
 
-      schema = response["content"]["application/json"]["schema"]
+      schema_ref = response["content"]["application/json"]["schema"]
+      schema = resolve_schema(schema_ref, spec)
       assert schema["type"] == "object"
       assert schema["properties"]["id"]["type"] == "integer"
       assert schema["properties"]["name"]["type"] == "string"
@@ -106,14 +118,16 @@ defmodule ExUnitOpenAPI.Integration.EndToEndTest do
       request_body = operation["requestBody"]
 
       assert request_body["required"] == true
-      schema = request_body["content"]["application/json"]["schema"]
+      schema_ref = request_body["content"]["application/json"]["schema"]
+      schema = resolve_schema(schema_ref, spec)
       assert schema["type"] == "object"
       assert schema["properties"]["user"]["type"] == "object"
       assert schema["properties"]["user"]["properties"]["name"]["type"] == "string"
       assert schema["properties"]["user"]["properties"]["email"]["type"] == "string"
 
       # Verify response
-      response_schema = operation["responses"]["201"]["content"]["application/json"]["schema"]
+      response_schema_ref = operation["responses"]["201"]["content"]["application/json"]["schema"]
+      response_schema = resolve_schema(response_schema_ref, spec)
       assert response_schema["properties"]["id"]["type"] == "integer"
     end
 
@@ -136,7 +150,8 @@ defmodule ExUnitOpenAPI.Integration.EndToEndTest do
       assert Map.has_key?(operation["responses"], "404")
 
       # Verify error response schema
-      error_schema = operation["responses"]["404"]["content"]["application/json"]["schema"]
+      error_schema_ref = operation["responses"]["404"]["content"]["application/json"]["schema"]
+      error_schema = resolve_schema(error_schema_ref, spec)
       assert error_schema["properties"]["error"]["type"] == "string"
     end
 
@@ -184,14 +199,17 @@ defmodule ExUnitOpenAPI.Integration.EndToEndTest do
       config = Config.load(router: ExUnitOpenAPI.TestApp.Router)
       {:ok, spec} = Generator.generate(Collector.get_collected_data(), config)
 
-      response_schema =
+      response_schema_ref =
         spec["paths"]["/api/users"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+
+      response_schema = resolve_schema(response_schema_ref, spec)
 
       # Response has data array
       assert response_schema["properties"]["data"]["type"] == "array"
 
-      # Array items have user properties
-      item_schema = response_schema["properties"]["data"]["items"]
+      # Array items have user properties (may be $ref or inline)
+      item_schema_ref = response_schema["properties"]["data"]["items"]
+      item_schema = resolve_schema(item_schema_ref, spec)
       assert item_schema["properties"]["id"]["type"] == "integer"
       assert item_schema["properties"]["name"]["type"] == "string"
     end
@@ -218,8 +236,10 @@ defmodule ExUnitOpenAPI.Integration.EndToEndTest do
       config = Config.load(router: ExUnitOpenAPI.TestApp.Router)
       {:ok, spec} = Generator.generate(Collector.get_collected_data(), config)
 
-      response_schema =
+      response_schema_ref =
         spec["paths"]["/api/deep"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+
+      response_schema = resolve_schema(response_schema_ref, spec)
 
       # Navigate the nested structure
       assert response_schema["properties"]["level1"]["type"] == "object"
