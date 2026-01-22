@@ -133,12 +133,6 @@ defmodule ExUnitOpenAPI.TypeInferrer do
 
   defp infer_array_items([]), do: %{}
 
-  # Handle charlists (list of integers) - these come from undecoded JSON strings
-  defp infer_array_items([first | _]) when is_integer(first) do
-    # This is a charlist (string as list of codepoints), treat as string
-    %{"type" => "string"}
-  end
-
   defp infer_array_items(items) when is_list(items) do
     items
     |> Enum.map(&infer/1)
