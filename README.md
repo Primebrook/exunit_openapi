@@ -74,7 +74,7 @@ That's it! Your OpenAPI spec will be generated at the configured output path.
 
 ## How It Works
 
-1. **Telemetry Capture**: ExUnitOpenAPI attaches to Phoenix's built-in telemetry events (`[:phoenix, :endpoint, :stop]`)
+1. **Telemetry Capture**: ExUnitOpenAPI attaches to Phoenix's built-in telemetry events (`[:phoenix, :router_dispatch, :stop]`)
 
 2. **Request Collection**: When your tests make requests via `Phoenix.ConnTest`, the library captures:
    - Request method, path, and parameters

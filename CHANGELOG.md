@@ -10,7 +10,7 @@ First working version of ExUnitOpenAPI. Generates OpenAPI 3.0.3 specifications f
 
 #### Features
 
-- **Telemetry-based capture**: Automatically hooks into `[:phoenix, :endpoint, :stop]` events to capture HTTP request/response data during test runs
+- **Telemetry-based capture**: Automatically hooks into `[:phoenix, :router_dispatch, :stop]` events to capture HTTP request/response data during test runs
 - **Router analysis**: Parses Phoenix router's `__routes__/0` to extract path patterns and match requests to route definitions
 - **Type inference**: Infers JSON Schema types from actual request/response data:
   - Primitives: string, integer, number, boolean, null
@@ -39,7 +39,8 @@ First working version of ExUnitOpenAPI. Generates OpenAPI 3.0.3 specifications f
 
 - Handle `Plug.Conn.Unfetched` structs in path/query/body params
 - Handle iolist response bodies (Phoenix uses these instead of plain strings)
-- Handle charlists in type inference
+- Use `[:phoenix, :router_dispatch, :stop]` telemetry event (not `[:phoenix, :endpoint, :stop]`)
+- Use duck-typing for conn pattern matching (Plug is test-only dependency)
 
 ---
 
@@ -68,8 +69,10 @@ First working version of ExUnitOpenAPI. Generates OpenAPI 3.0.3 specifications f
 ## Testing Status
 
 ### Library Tests
-- 50 unit tests passing
-- Tests cover: TypeInferrer, RouterAnalyzer, Collector, Generator, Config
+- **108 tests passing**
+- Unit tests: TypeInferrer, RouterAnalyzer, Collector, Generator, Config
+- Integration tests: End-to-end flow, telemetry capture
+- Regression tests: Bug fixes for iolist, unfetched params, telemetry event
 
 ### Integration Testing
 - Tested against Zappi data-api project
