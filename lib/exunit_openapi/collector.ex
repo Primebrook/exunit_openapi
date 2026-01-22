@@ -55,9 +55,11 @@ defmodule ExUnitOpenAPI.Collector do
 
   @doc """
   Captures request/response data from a Plug.Conn.
+
+  Accepts any struct/map with conn-like fields (method, request_path, etc.).
   """
-  @spec capture(Plug.Conn.t()) :: :ok
-  def capture(%Plug.Conn{} = conn) do
+  @spec capture(map()) :: :ok
+  def capture(%{method: _, request_path: _} = conn) do
     GenServer.cast(__MODULE__, {:capture, conn})
   end
 
@@ -118,8 +120,8 @@ defmodule ExUnitOpenAPI.Collector do
   end
 
   defp extract_body_params(conn) do
-    case conn.body_params do
-      %Plug.Conn.Unfetched{} -> %{}
+    case Map.get(conn, :body_params) do
+      %{__struct__: _} -> %{}  # Unfetched or other struct
       params when is_map(params) -> params
       _ -> %{}
     end
