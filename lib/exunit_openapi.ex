@@ -101,7 +101,7 @@ defmodule ExUnitOpenAPI do
   defp attach_telemetry do
     :telemetry.attach(
       "exunit-openapi-collector",
-      [:phoenix, :endpoint, :stop],
+      [:phoenix, :router_dispatch, :stop],
       &handle_telemetry_event/4,
       nil
     )
