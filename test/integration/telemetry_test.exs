@@ -139,20 +139,7 @@ defmodule ExUnitOpenAPI.Integration.TelemetryTest do
       :telemetry.attach(
         @handler_id,
         [:phoenix, :router_dispatch, :stop],
-        fn _event, _measurements, metadata, _config ->
-          case metadata do
-            %{conn: conn} ->
-              # This should not crash even though collector is down
-              try do
-                Collector.capture(conn)
-              catch
-                :exit, _ -> :ok
-              end
-
-            _ ->
-              :ok
-          end
-        end,
+        &__MODULE__.resilient_handler/4,
         nil
       )
 
@@ -167,6 +154,21 @@ defmodule ExUnitOpenAPI.Integration.TelemetryTest do
     case metadata do
       %{conn: conn} -> Collector.capture(conn)
       _ -> :ok
+    end
+  end
+
+  # Resilient handler that doesn't crash when collector is down
+  def resilient_handler(_event, _measurements, metadata, _config) do
+    case metadata do
+      %{conn: conn} ->
+        try do
+          Collector.capture(conn)
+        catch
+          :exit, _ -> :ok
+        end
+
+      _ ->
+        :ok
     end
   end
 end
