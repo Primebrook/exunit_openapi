@@ -54,7 +54,8 @@ defmodule ExUnitOpenAPI.GeneratorTest do
     end
 
     test "generates response schemas from response body" do
-      config = Config.load(router: nil, info: [title: "Test", version: "1.0"])
+      # Disable deduplication to test inline schema generation
+      config = Config.load(router: nil, info: [title: "Test", version: "1.0"], schema_deduplication: false)
 
       collected_data = [
         %{
@@ -114,7 +115,8 @@ defmodule ExUnitOpenAPI.GeneratorTest do
     end
 
     test "generates request body for POST requests" do
-      config = Config.load(router: nil, info: [title: "Test", version: "1.0"])
+      # Disable deduplication to test inline schema generation
+      config = Config.load(router: nil, info: [title: "Test", version: "1.0"], schema_deduplication: false)
 
       collected_data = [
         %{
