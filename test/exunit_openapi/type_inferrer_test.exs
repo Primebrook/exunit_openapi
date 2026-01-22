@@ -227,4 +227,85 @@ defmodule ExUnitOpenAPI.TypeInferrerTest do
       assert result["items"]["nullable"] == true
     end
   end
+
+  describe "infer_merged/2" do
+    test "returns empty map for empty list" do
+      assert TypeInferrer.infer_merged([]) == %{}
+    end
+
+    test "returns single inferred schema for single value" do
+      result = TypeInferrer.infer_merged([%{"name" => "Alice"}])
+      assert result["type"] == "object"
+      assert result["properties"]["name"]["type"] == "string"
+    end
+
+    test "detects enums in object properties" do
+      values = [
+        %{"status" => "pending", "name" => "Alice"},
+        %{"status" => "active", "name" => "Bob"},
+        %{"status" => "pending", "name" => "Charlie"}
+      ]
+
+      result = TypeInferrer.infer_merged(values)
+
+      assert result["type"] == "object"
+      assert result["properties"]["status"]["type"] == "string"
+      assert result["properties"]["status"]["enum"] == ["active", "pending"]
+      assert result["properties"]["name"]["type"] == "string"
+      refute Map.has_key?(result["properties"]["name"], "enum")
+    end
+
+    test "handles nested objects" do
+      values = [
+        %{"user" => %{"role" => "admin"}},
+        %{"user" => %{"role" => "user"}},
+        %{"user" => %{"role" => "admin"}}
+      ]
+
+      result = TypeInferrer.infer_merged(values)
+
+      user_schema = result["properties"]["user"]
+      assert user_schema["type"] == "object"
+      assert user_schema["properties"]["role"]["enum"] == ["admin", "user"]
+    end
+
+    test "marks optional properties as nullable" do
+      values = [
+        %{"name" => "Alice", "email" => "alice@test.com"},
+        %{"name" => "Bob"}  # No email
+      ]
+
+      result = TypeInferrer.infer_merged(values)
+
+      assert result["properties"]["name"]["type"] == "string"
+      refute Map.has_key?(result["properties"]["name"], "nullable")
+      assert result["properties"]["email"]["type"] == "string"
+      assert result["properties"]["email"]["nullable"] == true
+    end
+
+    test "handles arrays of objects" do
+      values = [
+        [%{"status" => "pending"}, %{"status" => "active"}],
+        [%{"status" => "pending"}]
+      ]
+
+      result = TypeInferrer.infer_merged(values)
+
+      assert result["type"] == "array"
+      assert result["items"]["properties"]["status"]["enum"] == ["active", "pending"]
+    end
+
+    test "respects enum_inference option" do
+      values = [
+        %{"status" => "pending"},
+        %{"status" => "active"},
+        %{"status" => "pending"}
+      ]
+
+      result = TypeInferrer.infer_merged(values, enum_inference: false)
+
+      assert result["properties"]["status"]["type"] == "string"
+      refute Map.has_key?(result["properties"]["status"], "enum")
+    end
+  end
 end

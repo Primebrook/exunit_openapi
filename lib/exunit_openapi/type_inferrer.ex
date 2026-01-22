@@ -182,6 +182,112 @@ defmodule ExUnitOpenAPI.TypeInferrer do
   end
 
   @doc """
+  Infers a merged schema from multiple values, with enum detection at property level.
+
+  Unlike `merge_schemas/1` which merges already-inferred schemas, this function
+  takes raw values and aggregates them by property path before inference,
+  enabling enum detection for properties that have limited unique values.
+
+  ## Options
+
+  Same as `infer_with_samples/2`:
+  - `:enum_inference` - Enable enum detection (default: true)
+  - `:enum_min_samples` - Minimum samples needed to consider enum (default: 3)
+  - `:enum_max_values` - Maximum unique values to be considered an enum (default: 10)
+
+  ## Examples
+
+      iex> values = [
+      ...>   %{"status" => "pending"},
+      ...>   %{"status" => "active"},
+      ...>   %{"status" => "pending"}
+      ...> ]
+      iex> TypeInferrer.infer_merged(values)
+      %{"type" => "object", "properties" => %{"status" => %{"type" => "string", "enum" => ["active", "pending"]}}}
+  """
+  @spec infer_merged(list(term()), keyword()) :: json_schema()
+  def infer_merged(values, opts \\ [])
+
+  def infer_merged([], _opts), do: %{}
+  def infer_merged([single], _opts), do: infer(single)
+
+  def infer_merged(values, opts) do
+    # Check if all values are the same type
+    types = values |> Enum.map(&value_type/1) |> Enum.uniq()
+
+    case types do
+      [:map] ->
+        # All maps - aggregate by property and infer with samples
+        infer_merged_objects(values, opts)
+
+      [:list] ->
+        # All lists - merge array items
+        all_items = Enum.flat_map(values, & &1)
+        %{
+          "type" => "array",
+          "items" => infer_merged(all_items, opts)
+        }
+
+      _ ->
+        # Mixed types or primitives - fall back to infer_with_samples
+        infer_with_samples(values, opts)
+    end
+  end
+
+  defp value_type(v) when is_map(v), do: :map
+  defp value_type(v) when is_list(v), do: :list
+  defp value_type(_), do: :primitive
+
+  defp infer_merged_objects(maps, opts) do
+    # Collect all property keys
+    all_keys =
+      maps
+      |> Enum.flat_map(&Map.keys/1)
+      |> Enum.map(&to_string/1)
+      |> Enum.uniq()
+
+    # For each property, collect all values and infer with samples
+    properties =
+      all_keys
+      |> Enum.map(fn key ->
+        values_for_key =
+          maps
+          |> Enum.map(&Map.get(&1, key) || Map.get(&1, String.to_atom(key)))
+          |> Enum.reject(&is_nil/1)
+
+        schema =
+          case values_for_key do
+            [] -> %{}
+            [single] -> infer(single)
+            multiple -> infer_merged(multiple, opts)
+          end
+
+        {key, schema}
+      end)
+      |> Enum.reject(fn {_k, v} -> v == %{} end)
+      |> Enum.into(%{})
+
+    # Check for nullable properties (present in some maps but not others)
+    properties_with_nullable =
+      properties
+      |> Enum.map(fn {key, schema} ->
+        present_count =
+          Enum.count(maps, fn m ->
+            Map.has_key?(m, key) or Map.has_key?(m, String.to_atom(key))
+          end)
+
+        if present_count < length(maps) and schema != %{} do
+          {key, Map.put(schema, "nullable", true)}
+        else
+          {key, schema}
+        end
+      end)
+      |> Enum.into(%{})
+
+    %{"type" => "object", "properties" => properties_with_nullable}
+  end
+
+  @doc """
   Infers the type of a path or query parameter from its string value.
 
   Attempts to detect if the string represents an integer, boolean, etc.

@@ -274,18 +274,18 @@ defmodule ExUnitOpenAPI.Generator do
 
   defp maybe_add_request_body(operation, method, requests, context, registry, config)
        when method in ["POST", "PUT", "PATCH"] do
-    body_schemas =
+    body_values =
       requests
       |> Enum.map(& &1.body_params)
       |> Enum.reject(&(map_size(&1) == 0))
-      |> Enum.map(&TypeInferrer.infer/1)
 
-    case body_schemas do
+    case body_values do
       [] ->
         {operation, registry}
 
-      schemas ->
-        merged_schema = TypeInferrer.merge_schemas(schemas)
+      values ->
+        # Use infer_merged for proper enum detection
+        merged_schema = TypeInferrer.infer_merged(values, enum_opts(config))
 
         # Register the request body schema
         request_context = Map.put(context, :type, :request)
@@ -340,18 +340,18 @@ defmodule ExUnitOpenAPI.Generator do
     }
 
     # Build content schema from response bodies
-    body_schemas =
+    body_values =
       requests
       |> Enum.map(& &1.response_body)
       |> Enum.reject(&is_nil/1)
-      |> Enum.map(&TypeInferrer.infer/1)
 
-    case body_schemas do
+    case body_values do
       [] ->
         {response, registry}
 
-      schemas ->
-        merged_schema = TypeInferrer.merge_schemas(schemas)
+      values ->
+        # Use infer_merged for proper enum detection
+        merged_schema = TypeInferrer.infer_merged(values, enum_opts(config))
 
         # Register the response body schema
         {registry, schema_or_ref} =
@@ -382,6 +382,15 @@ defmodule ExUnitOpenAPI.Generator do
 
   defp is_ref?(%{"$ref" => _}), do: true
   defp is_ref?(_), do: false
+
+  # Extract enum inference options from config
+  defp enum_opts(config) do
+    [
+      enum_inference: Map.get(config, :enum_inference, true),
+      enum_min_samples: Map.get(config, :enum_min_samples, 3),
+      enum_max_values: Map.get(config, :enum_max_values, 10)
+    ]
+  end
 
   defp status_description(200), do: "Successful response"
   defp status_description(201), do: "Resource created"
