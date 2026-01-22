@@ -108,19 +108,19 @@ defmodule ExUnitOpenAPI.Collector do
     %{
       method: conn.method,
       path: conn.request_path,
-      path_params: conn.path_params || %{},
-      query_params: conn.query_params || %{},
-      body_params: extract_body_params(conn),
-      request_headers: conn.req_headers,
+      path_params: extract_params(conn, :path_params),
+      query_params: extract_params(conn, :query_params),
+      body_params: extract_params(conn, :body_params),
+      request_headers: Map.get(conn, :req_headers, []),
       response_status: conn.status,
       response_body: parse_response_body(conn),
-      response_headers: conn.resp_headers,
+      response_headers: Map.get(conn, :resp_headers, []),
       content_type: get_content_type(conn)
     }
   end
 
-  defp extract_body_params(conn) do
-    case Map.get(conn, :body_params) do
+  defp extract_params(conn, key) do
+    case Map.get(conn, key) do
       %{__struct__: _} -> %{}  # Unfetched or other struct
       params when is_map(params) -> params
       _ -> %{}
@@ -136,13 +136,25 @@ defmodule ExUnitOpenAPI.Collector do
         nil
 
       body when is_binary(body) ->
-        case Jason.decode(body) do
-          {:ok, decoded} -> decoded
-          {:error, _} -> body
-        end
+        decode_json_body(body)
+
+      body when is_list(body) ->
+        # Handle iolist (common in Phoenix responses)
+        body
+        |> IO.iodata_to_binary()
+        |> decode_json_body()
 
       body ->
         body
+    end
+  end
+
+  defp decode_json_body(""), do: nil
+
+  defp decode_json_body(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} -> decoded
+      {:error, _} -> body
     end
   end
 

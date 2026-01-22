@@ -77,6 +77,8 @@ defmodule ExUnitOpenAPI.TypeInferrer do
     }
   end
 
+  def infer(value) when is_tuple(value), do: %{"type" => "array"}
+  def infer(value) when is_atom(value), do: %{"type" => "string"}
   def infer(_value), do: %{}
 
   @doc """
@@ -131,11 +133,19 @@ defmodule ExUnitOpenAPI.TypeInferrer do
 
   defp infer_array_items([]), do: %{}
 
-  defp infer_array_items(items) do
+  # Handle charlists (list of integers) - these come from undecoded JSON strings
+  defp infer_array_items([first | _]) when is_integer(first) do
+    # This is a charlist (string as list of codepoints), treat as string
+    %{"type" => "string"}
+  end
+
+  defp infer_array_items(items) when is_list(items) do
     items
     |> Enum.map(&infer/1)
     |> merge_schemas()
   end
+
+  defp infer_array_items(_), do: %{}
 
   defp infer_properties(map) when is_map(map) do
     map
