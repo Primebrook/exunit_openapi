@@ -2,7 +2,7 @@ defmodule ExUnitOpenAPI.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/zappi/exunit_openapi"
+  @source_url "https://github.com/primebrook/exunit_openapi"
 
   def project do
     [
@@ -52,7 +52,7 @@ defmodule ExUnitOpenAPI.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib mix.exs README.md LICENSE)
+      files: ~w(lib mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end
 
