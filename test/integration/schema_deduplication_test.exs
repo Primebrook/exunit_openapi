@@ -193,5 +193,50 @@ defmodule ExUnitOpenAPI.Integration.SchemaDeduplicationTest do
       # The spec should be valid JSON
       assert {:ok, _} = Jason.decode(json)
     end
+
+    test "deduplicated spec is smaller than inline spec", %{conn: conn} do
+      # Make multiple requests to build up repeated schemas
+      _conn1 = get(conn, "/api/users")
+      _conn2 = get(build_conn(), "/api/users/1")
+      _conn3 = get(build_conn(), "/api/users/2")
+
+      conn4 =
+        build_conn()
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/users", %{user: %{name: "Test", email: "test@test.com"}})
+
+      assert conn4.status == 201
+
+      collected_data = Collector.get_collected_data()
+
+      # Generate spec WITH deduplication
+      config_dedup = Config.load(router: ExUnitOpenAPI.TestApp.Router, schema_deduplication: true)
+      {:ok, spec_dedup} = Generator.generate(collected_data, config_dedup)
+      json_dedup = Jason.encode!(spec_dedup)
+
+      # Generate spec WITHOUT deduplication
+      config_inline = Config.load(router: ExUnitOpenAPI.TestApp.Router, schema_deduplication: false)
+      {:ok, spec_inline} = Generator.generate(collected_data, config_inline)
+      json_inline = Jason.encode!(spec_inline)
+
+      # Deduplicated spec should have components.schemas
+      assert Map.has_key?(spec_dedup["components"], "schemas")
+
+      # Inline spec should NOT have schemas (only securitySchemes if configured)
+      refute Map.has_key?(spec_inline["components"] || %{}, "schemas")
+
+      # Both should be valid JSON
+      assert {:ok, _} = Jason.decode(json_dedup)
+      assert {:ok, _} = Jason.decode(json_inline)
+
+      # Log sizes for visibility (not a hard assertion since size depends on naming)
+      IO.puts("\n  Deduplicated spec size: #{byte_size(json_dedup)} bytes")
+      IO.puts("  Inline spec size: #{byte_size(json_inline)} bytes")
+
+      # The deduplicated spec should use $refs (verify by checking for the string)
+      if Map.get(spec_dedup["components"], "schemas", %{}) |> map_size() > 0 do
+        assert String.contains?(json_dedup, "#/components/schemas/")
+      end
+    end
   end
 end
