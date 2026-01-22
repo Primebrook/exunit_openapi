@@ -38,6 +38,14 @@ def deps do
 end
 ```
 
+Also add the preferred environment for the mix task:
+
+```elixir
+def cli do
+  [preferred_envs: ["openapi.generate": :test]]
+end
+```
+
 ## Quick Start
 
 ### 1. Configure in `config/test.exs`

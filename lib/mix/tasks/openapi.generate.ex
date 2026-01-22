@@ -10,6 +10,14 @@ defmodule Mix.Tasks.Openapi.Generate do
 
       $ OPENAPI=1 mix test
 
+  ## Setup
+
+  Add the following to your `mix.exs` to ensure the task runs in the test environment:
+
+      def cli do
+        [preferred_envs: ["openapi.generate": :test]]
+      end
+
   ## Options
 
     * `--output` - Output file path (default: from config or "openapi.json")
