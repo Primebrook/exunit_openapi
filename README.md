@@ -228,7 +228,7 @@ By default, ExUnitOpenAPI merges with the existing spec file, preserving any man
 
 ## Inspiration
 
-This library is inspired by [rspec-openapi](https://github.com/exoego/rspec-openapi) for Ruby/Rails, which pioneered the "generate docs from tests" approach.
+This library is inspired by [rspec-openapi](https://github.com/exoego/rspec-openapi) for Ruby/Rails.
 
 ## License
 
