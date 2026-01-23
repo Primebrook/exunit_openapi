@@ -1,5 +1,8 @@
 # ExUnitOpenAPI
 
+[![Hex.pm](https://img.shields.io/hexpm/v/exunit_openapi.svg)](https://hex.pm/packages/exunit_openapi)
+[![Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/exunit_openapi/readme.html)
+
 Automatically generate OpenAPI 3.0 specifications from your Phoenix controller tests. Zero annotations required - just run your tests and get documentation.
 
 ## The Problem
