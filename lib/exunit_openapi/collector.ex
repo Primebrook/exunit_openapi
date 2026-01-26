@@ -19,11 +19,31 @@ defmodule ExUnitOpenAPI.Collector do
         response_status: 200,
         response_body: %{...},
         response_headers: [...],
-        content_type: "application/json"
+        content_type: "application/json",
+        openapi_tags: %{...}  # Optional: from test tags
       }
 
   Requests are grouped by `{method, path_pattern}` to aggregate multiple
   examples of the same endpoint.
+
+  ## Test Tags for Schema Name Overrides
+
+  To override schema names for specific tests, use the `@tag` attribute
+  combined with `apply_openapi_tags/2` in your test setup:
+
+      # In your ConnCase or test module setup
+      setup context do
+        conn = Phoenix.ConnTest.build_conn()
+        conn = ExUnitOpenAPI.Collector.apply_openapi_tags(conn, context)
+        {:ok, conn: conn}
+      end
+
+      # In your test
+      @tag openapi: [response_schema: "CustomUserResponse"]
+      test "shows user", %{conn: conn} do
+        conn = get(conn, "/users/123")
+        # The response schema will be named "CustomUserResponse"
+      end
   """
 
   use GenServer
@@ -40,7 +60,8 @@ defmodule ExUnitOpenAPI.Collector do
           response_status: non_neg_integer(),
           response_body: term(),
           response_headers: list({String.t(), String.t()}),
-          content_type: String.t() | nil
+          content_type: String.t() | nil,
+          openapi_tags: map() | nil
         }
 
   # Client API
@@ -79,6 +100,56 @@ defmodule ExUnitOpenAPI.Collector do
     GenServer.cast(__MODULE__, :clear)
   end
 
+  @doc """
+  Applies OpenAPI tags from test context to a connection.
+
+  Call this in your test setup to enable per-test schema name overrides:
+
+      setup context do
+        conn = Phoenix.ConnTest.build_conn()
+        conn = ExUnitOpenAPI.Collector.apply_openapi_tags(conn, context)
+        {:ok, conn: conn}
+      end
+
+  Then use `@tag openapi: [...]` in your tests:
+
+      @tag openapi: [response_schema: "MyCustomSchema"]
+      test "my test", %{conn: conn} do
+        # ...
+      end
+
+  ## Supported Tags
+
+  - `:response_schema` - Override the response schema name
+  - `:request_schema` - Override the request body schema name
+
+  ## Returns
+
+  The connection with OpenAPI tags stored in `conn.private[:openapi_tags]`
+  """
+  @spec apply_openapi_tags(map(), map()) :: map()
+  def apply_openapi_tags(conn, context) do
+    case Map.get(context, :openapi) do
+      nil ->
+        conn
+
+      tags when is_list(tags) ->
+        put_private(conn, :openapi_tags, Enum.into(tags, %{}))
+
+      tags when is_map(tags) ->
+        put_private(conn, :openapi_tags, tags)
+    end
+  end
+
+  # Helper to put a value in conn.private without requiring Plug.Conn
+  defp put_private(%{private: private} = conn, key, value) when is_map(private) do
+    %{conn | private: Map.put(private, key, value)}
+  end
+
+  defp put_private(conn, key, value) do
+    Map.put(conn, :private, %{key => value})
+  end
+
   # Server callbacks
 
   @impl true
@@ -115,8 +186,16 @@ defmodule ExUnitOpenAPI.Collector do
       response_status: conn.status,
       response_body: parse_response_body(conn),
       response_headers: Map.get(conn, :resp_headers, []),
-      content_type: get_content_type(conn)
+      content_type: get_content_type(conn),
+      openapi_tags: extract_openapi_tags(conn)
     }
+  end
+
+  defp extract_openapi_tags(conn) do
+    case Map.get(conn, :private) do
+      %{openapi_tags: tags} when is_map(tags) -> tags
+      _ -> nil
+    end
   end
 
   defp extract_params(conn, key) do

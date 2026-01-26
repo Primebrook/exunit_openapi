@@ -96,6 +96,34 @@ defmodule ExUnitOpenAPI do
     end
   end
 
+  @doc """
+  Applies OpenAPI tags from test context to a connection.
+
+  Use this in your ConnCase setup to enable per-test schema name overrides:
+
+      # In test/support/conn_case.ex
+      setup context do
+        conn = Phoenix.ConnTest.build_conn()
+        conn = ExUnitOpenAPI.apply_openapi_tags(conn, context)
+        {:ok, conn: conn}
+      end
+
+  Then in your tests:
+
+      @tag openapi: [response_schema: "CustomUserSchema"]
+      test "shows user", %{conn: conn} do
+        conn = get(conn, "/users/123")
+        # Response schema will be named "CustomUserSchema"
+      end
+
+  ## Supported Tags
+
+  - `:response_schema` - Override the response schema name
+  - `:request_schema` - Override the request body schema name
+  """
+  @spec apply_openapi_tags(map(), map()) :: map()
+  defdelegate apply_openapi_tags(conn, context), to: Collector
+
   # Private functions
 
   defp attach_telemetry do

@@ -5,9 +5,16 @@ defmodule ExUnitOpenAPI.Generator do
   This module takes the captured HTTP interactions from the Collector and
   transforms them into a valid OpenAPI specification, using the RouterAnalyzer
   to map requests to route patterns and the TypeInferrer to generate schemas.
+
+  ## Schema Deduplication
+
+  When `schema_deduplication: true` (default), identical schemas are
+  automatically deduplicated using `$ref` pointers to `components/schemas`.
+  Schema names are either inferred from context or can be overridden via
+  config or test tags.
   """
 
-  alias ExUnitOpenAPI.{Config, RouterAnalyzer, TypeInferrer}
+  alias ExUnitOpenAPI.{Config, RouterAnalyzer, SchemaRegistry, TypeInferrer}
 
   @openapi_version "3.0.3"
 
@@ -31,11 +38,20 @@ defmodule ExUnitOpenAPI.Generator do
     router = Config.router(config)
     routes = if router, do: RouterAnalyzer.analyze(router), else: []
 
+    # Initialize the schema registry
+    registry = SchemaRegistry.new(config)
+
+    # Build paths and collect schemas in registry
+    {paths, registry} = build_paths(collected_data, routes, registry, config)
+
+    # Finalize registry to get components.schemas
+    schemas = SchemaRegistry.finalize(registry)
+
     spec = %{
       "openapi" => @openapi_version,
       "info" => build_info(config),
-      "paths" => build_paths(collected_data, routes),
-      "components" => build_components(collected_data, config)
+      "paths" => paths,
+      "components" => build_components(schemas, config)
     }
 
     spec =
@@ -74,16 +90,22 @@ defmodule ExUnitOpenAPI.Generator do
 
   # Private functions - Paths
 
-  defp build_paths(collected_data, routes) do
-    collected_data
-    |> group_by_endpoint(routes)
-    |> Enum.map(fn {{path_pattern, method}, requests} ->
-      openapi_path = RouterAnalyzer.to_openapi_path(path_pattern)
-      operation = build_operation(method, path_pattern, requests, routes)
-      {openapi_path, %{String.downcase(method) => operation}}
-    end)
-    |> merge_path_operations()
-    |> Enum.into(%{})
+  defp build_paths(collected_data, routes, registry, config) do
+    grouped = group_by_endpoint(collected_data, routes)
+
+    {path_operations, registry} =
+      Enum.reduce(grouped, {[], registry}, fn {{path_pattern, method}, requests}, {acc, reg} ->
+        openapi_path = RouterAnalyzer.to_openapi_path(path_pattern)
+        {operation, reg} = build_operation(method, path_pattern, requests, routes, reg, config)
+        {[{openapi_path, %{String.downcase(method) => operation}} | acc], reg}
+      end)
+
+    paths =
+      path_operations
+      |> merge_path_operations()
+      |> Enum.into(%{})
+
+    {paths, registry}
   end
 
   defp group_by_endpoint(collected_data, routes) do
@@ -105,18 +127,54 @@ defmodule ExUnitOpenAPI.Generator do
     end)
   end
 
-  defp build_operation(method, path_pattern, requests, routes) do
+  defp build_operation(method, path_pattern, requests, routes, registry, config) do
     route_info = find_route_info(path_pattern, method, routes)
+
+    # Build context for schema naming
+    base_context = build_schema_context(route_info, method, path_pattern, requests)
+
+    # Build responses with registry
+    {responses, registry} = build_responses(requests, base_context, registry, config)
 
     operation = %{
       "operationId" => generate_operation_id(route_info, method, path_pattern),
-      "responses" => build_responses(requests)
+      "responses" => responses
     }
 
-    operation
-    |> maybe_add_parameters(path_pattern, requests)
-    |> maybe_add_request_body(method, requests)
-    |> maybe_add_tags(route_info)
+    # Add request body (may register schemas)
+    {operation, registry} =
+      maybe_add_request_body(operation, method, requests, base_context, registry, config)
+
+    operation =
+      operation
+      |> maybe_add_parameters(path_pattern, requests)
+      |> maybe_add_tags(route_info)
+
+    {operation, registry}
+  end
+
+  defp build_schema_context(route_info, method, path_pattern, requests) do
+    # Extract openapi tags from requests if present
+    openapi_tags =
+      requests
+      |> Enum.find_value(fn req ->
+        Map.get(req, :openapi_tags)
+      end)
+
+    base = %{
+      method: method,
+      path: path_pattern,
+      openapi_tags: openapi_tags
+    }
+
+    if route_info do
+      Map.merge(base, %{
+        controller: route_info.controller,
+        action: route_info.action
+      })
+    else
+      base
+    end
   end
 
   defp find_route_info(path_pattern, method, routes) do
@@ -214,73 +272,124 @@ defmodule ExUnitOpenAPI.Generator do
 
   # Private functions - Request Body
 
-  defp maybe_add_request_body(operation, method, requests)
+  defp maybe_add_request_body(operation, method, requests, context, registry, config)
        when method in ["POST", "PUT", "PATCH"] do
-    body_schemas =
+    body_values =
       requests
       |> Enum.map(& &1.body_params)
       |> Enum.reject(&(map_size(&1) == 0))
-      |> Enum.map(&TypeInferrer.infer/1)
 
-    case body_schemas do
+    case body_values do
       [] ->
-        operation
+        {operation, registry}
 
-      schemas ->
-        merged_schema = TypeInferrer.merge_schemas(schemas)
+      values ->
+        # Use infer_merged for proper enum detection
+        merged_schema = TypeInferrer.infer_merged(values, enum_opts(config))
+
+        # Register the request body schema
+        request_context = Map.put(context, :type, :request)
+
+        {registry, schema_or_ref} =
+          SchemaRegistry.register(registry, merged_schema, request_context, top_level: true)
+
+        # Process nested schemas for potential extraction
+        {registry, processed_schema} =
+          if is_ref?(schema_or_ref) do
+            {registry, schema_or_ref}
+          else
+            process_nested_schemas(registry, schema_or_ref, request_context, config)
+          end
 
         request_body = %{
           "required" => true,
           "content" => %{
             "application/json" => %{
-              "schema" => merged_schema
+              "schema" => processed_schema
             }
           }
         }
 
-        Map.put(operation, "requestBody", request_body)
+        {Map.put(operation, "requestBody", request_body), registry}
     end
   end
 
-  defp maybe_add_request_body(operation, _method, _requests), do: operation
+  defp maybe_add_request_body(operation, _method, _requests, _context, registry, _config) do
+    {operation, registry}
+  end
 
   # Private functions - Responses
 
-  defp build_responses(requests) do
-    requests
-    |> Enum.group_by(& &1.response_status)
-    |> Enum.map(fn {status, status_requests} ->
-      response = build_response(status, status_requests)
-      {Integer.to_string(status), response}
+  defp build_responses(requests, base_context, registry, config) do
+    grouped = Enum.group_by(requests, & &1.response_status)
+
+    Enum.reduce(grouped, {%{}, registry}, fn {status, status_requests}, {acc, reg} ->
+      response_context =
+        base_context
+        |> Map.put(:type, :response)
+        |> Map.put(:status, status)
+
+      {response, reg} = build_response(status, status_requests, response_context, reg, config)
+      {Map.put(acc, Integer.to_string(status), response), reg}
     end)
-    |> Enum.into(%{})
   end
 
-  defp build_response(status, requests) do
+  defp build_response(status, requests, context, registry, config) do
     response = %{
       "description" => status_description(status)
     }
 
     # Build content schema from response bodies
-    body_schemas =
+    body_values =
       requests
       |> Enum.map(& &1.response_body)
       |> Enum.reject(&is_nil/1)
-      |> Enum.map(&TypeInferrer.infer/1)
 
-    case body_schemas do
+    case body_values do
       [] ->
-        response
+        {response, registry}
 
-      schemas ->
-        merged_schema = TypeInferrer.merge_schemas(schemas)
+      values ->
+        # Use infer_merged for proper enum detection
+        merged_schema = TypeInferrer.infer_merged(values, enum_opts(config))
 
-        Map.put(response, "content", %{
-          "application/json" => %{
-            "schema" => merged_schema
-          }
-        })
+        # Register the response body schema
+        {registry, schema_or_ref} =
+          SchemaRegistry.register(registry, merged_schema, context, top_level: true)
+
+        # Process nested schemas for potential extraction
+        {registry, processed_schema} =
+          if is_ref?(schema_or_ref) do
+            {registry, schema_or_ref}
+          else
+            process_nested_schemas(registry, schema_or_ref, context, config)
+          end
+
+        response_with_content =
+          Map.put(response, "content", %{
+            "application/json" => %{
+              "schema" => processed_schema
+            }
+          })
+
+        {response_with_content, registry}
     end
+  end
+
+  defp process_nested_schemas(registry, schema, context, _config) do
+    SchemaRegistry.process_nested(registry, schema, context)
+  end
+
+  defp is_ref?(%{"$ref" => _}), do: true
+  defp is_ref?(_), do: false
+
+  # Extract enum inference options from config
+  defp enum_opts(config) do
+    [
+      enum_inference: Map.get(config, :enum_inference, true),
+      enum_min_samples: Map.get(config, :enum_min_samples, 3),
+      enum_max_values: Map.get(config, :enum_max_values, 10)
+    ]
   end
 
   defp status_description(200), do: "Successful response"
@@ -310,9 +419,18 @@ defmodule ExUnitOpenAPI.Generator do
 
   # Private functions - Components
 
-  defp build_components(_collected_data, config) do
+  defp build_components(schemas, config) do
     components = %{}
 
+    # Add schemas from registry
+    components =
+      if map_size(schemas) > 0 do
+        Map.put(components, "schemas", schemas)
+      else
+        components
+      end
+
+    # Add security schemes from config
     case Config.security_schemes(config) do
       schemes when map_size(schemes) > 0 ->
         Map.put(components, "securitySchemes", schemes)
