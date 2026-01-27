@@ -7,7 +7,6 @@ defmodule ExUnitOpenAPI.Config do
       config :exunit_openapi,
         router: MyAppWeb.Router,           # Required: Your Phoenix router module
         output: "openapi.json",            # Output file path (default: openapi.json)
-        format: :json,                     # Output format: :json or :yaml
         info: [                            # OpenAPI info object
           title: "My API",
           version: "1.0.0",
@@ -23,7 +22,6 @@ defmodule ExUnitOpenAPI.Config do
   @default_config %{
     router: nil,
     output: "openapi.json",
-    format: :json,
     info: %{
       title: "API",
       version: "1.0.0"
@@ -36,7 +34,6 @@ defmodule ExUnitOpenAPI.Config do
   @type t :: %{
           router: module() | nil,
           output: String.t(),
-          format: :json | :yaml,
           info: map(),
           servers: list(map()),
           security_schemes: map(),
@@ -63,12 +60,6 @@ defmodule ExUnitOpenAPI.Config do
   """
   @spec output_path(t()) :: String.t()
   def output_path(%{output: output}), do: output
-
-  @doc """
-  Gets the output format from config.
-  """
-  @spec format(t()) :: :json | :yaml
-  def format(%{format: format}), do: format
 
   @doc """
   Gets the router module from config.

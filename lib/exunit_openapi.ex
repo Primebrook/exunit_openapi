@@ -131,27 +131,23 @@ defmodule ExUnitOpenAPI do
     end)
   end
 
-  defp write_spec(spec, output_path, config) do
+  defp write_spec(spec, output_path, _config) do
     dir = Path.dirname(output_path)
-    File.mkdir_p!(dir)
 
-    content =
-      case Config.format(config) do
-        :json -> Jason.encode!(spec, pretty: true)
-        :yaml -> encode_yaml(spec)
-      end
-
-    File.write!(output_path, content)
-    {:ok, output_path}
+    with :ok <- File.mkdir_p(dir),
+         {:ok, content} <- encode_json(spec),
+         :ok <- File.write(output_path, content) do
+      {:ok, output_path}
+    else
+      {:error, reason} ->
+        {:error, {:file_write_failed, output_path, reason}}
+    end
   end
 
-  defp encode_yaml(spec) do
-    if Code.ensure_loaded?(YamlElixir) do
-      # YamlElixir doesn't have an encoder, so we'd need a different library
-      # For now, fall back to JSON
-      Jason.encode!(spec, pretty: true)
-    else
-      raise "yaml_elixir is required for YAML output. Add {:yaml_elixir, \"~> 2.9\"} to your deps."
+  defp encode_json(spec) do
+    case Jason.encode(spec, pretty: true) do
+      {:ok, json} -> {:ok, json}
+      {:error, reason} -> {:error, {:json_encode_failed, reason}}
     end
   end
 end

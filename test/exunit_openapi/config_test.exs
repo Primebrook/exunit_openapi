@@ -33,7 +33,6 @@ defmodule ExUnitOpenAPI.ConfigTest do
 
       assert config.router == nil
       assert config.output == "openapi.json"
-      assert config.format == :json
       assert config.info == %{title: "API", version: "1.0.0"}
       assert config.servers == []
       assert config.security_schemes == %{}
@@ -43,13 +42,11 @@ defmodule ExUnitOpenAPI.ConfigTest do
     test "loads config from application env" do
       Application.put_env(:exunit_openapi, :router, MyApp.Router)
       Application.put_env(:exunit_openapi, :output, "priv/api.json")
-      Application.put_env(:exunit_openapi, :format, :yaml)
 
       config = Config.load()
 
       assert config.router == MyApp.Router
       assert config.output == "priv/api.json"
-      assert config.format == :yaml
     end
 
     test "override options take precedence over app env" do
@@ -119,11 +116,6 @@ defmodule ExUnitOpenAPI.ConfigTest do
     test "output_path/1 returns output path" do
       config = Config.load(output: "custom/path.json")
       assert Config.output_path(config) == "custom/path.json"
-    end
-
-    test "format/1 returns format" do
-      config = Config.load(format: :yaml)
-      assert Config.format(config) == :yaml
     end
 
     test "router/1 returns router module" do

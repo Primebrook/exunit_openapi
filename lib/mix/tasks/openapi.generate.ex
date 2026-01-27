@@ -21,7 +21,6 @@ defmodule Mix.Tasks.Openapi.Generate do
   ## Options
 
     * `--output` - Output file path (default: from config or "openapi.json")
-    * `--format` - Output format: json or yaml (default: json)
     * `--only` - Only run tests matching the given tag
     * `--exclude` - Exclude tests matching the given tag
 
@@ -41,7 +40,6 @@ defmodule Mix.Tasks.Openapi.Generate do
       OptionParser.parse(args,
         switches: [
           output: :string,
-          format: :string,
           only: :keep,
           exclude: :keep
         ]
@@ -62,11 +60,6 @@ defmodule Mix.Tasks.Openapi.Generate do
     # Store custom options for the generator
     if opts[:output] do
       Application.put_env(:exunit_openapi, :output, opts[:output])
-    end
-
-    if opts[:format] do
-      format = String.to_atom(opts[:format])
-      Application.put_env(:exunit_openapi, :format, format)
     end
 
     # Run the test task
