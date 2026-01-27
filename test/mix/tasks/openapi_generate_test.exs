@@ -7,12 +7,10 @@ defmodule Mix.Tasks.Openapi.GenerateTest do
     # Clean up env before each test
     System.delete_env("OPENAPI")
     Application.delete_env(:exunit_openapi, :output)
-    Application.delete_env(:exunit_openapi, :format)
 
     on_exit(fn ->
       System.delete_env("OPENAPI")
       Application.delete_env(:exunit_openapi, :output)
-      Application.delete_env(:exunit_openapi, :format)
     end)
 
     :ok
@@ -25,7 +23,6 @@ defmodule Mix.Tasks.Openapi.GenerateTest do
         OptionParser.parse(["--output", "custom/path.json"],
           switches: [
             output: :string,
-            format: :string,
             only: :keep,
             exclude: :keep
           ]
@@ -34,26 +31,11 @@ defmodule Mix.Tasks.Openapi.GenerateTest do
       assert opts[:output] == "custom/path.json"
     end
 
-    test "parses --format option" do
-      {opts, _, _} =
-        OptionParser.parse(["--format", "yaml"],
-          switches: [
-            output: :string,
-            format: :string,
-            only: :keep,
-            exclude: :keep
-          ]
-        )
-
-      assert opts[:format] == "yaml"
-    end
-
     test "parses multiple --only options" do
       {opts, _, _} =
         OptionParser.parse(["--only", "integration", "--only", "api"],
           switches: [
             output: :string,
-            format: :string,
             only: :keep,
             exclude: :keep
           ]
@@ -66,17 +48,15 @@ defmodule Mix.Tasks.Openapi.GenerateTest do
 
     test "parses mixed options" do
       {opts, _, _} =
-        OptionParser.parse(["--output", "api.json", "--format", "json", "--only", "api", "--exclude", "slow"],
+        OptionParser.parse(["--output", "api.json", "--only", "api", "--exclude", "slow"],
           switches: [
             output: :string,
-            format: :string,
             only: :keep,
             exclude: :keep
           ]
         )
 
       assert opts[:output] == "api.json"
-      assert opts[:format] == "json"
       assert opts[:only] == "api"
       assert opts[:exclude] == "slow"
     end
@@ -97,8 +77,8 @@ defmodule Mix.Tasks.Openapi.GenerateTest do
       assert test_args == ["--only", "integration", "--exclude", "slow"]
     end
 
-    test "ignores output and format when building test args" do
-      opts = [output: "api.json", format: "yaml", only: "api"]
+    test "ignores output when building test args" do
+      opts = [output: "api.json", only: "api"]
 
       test_args =
         opts
@@ -121,7 +101,7 @@ defmodule Mix.Tasks.Openapi.GenerateTest do
       {:docs_v1, _, _, _, %{"en" => moduledoc}, _, _} = Code.fetch_docs(Generate)
       assert moduledoc =~ "mix openapi.generate"
       assert moduledoc =~ "--output"
-      assert moduledoc =~ "--format"
+      assert moduledoc =~ "--only"
     end
   end
 end
