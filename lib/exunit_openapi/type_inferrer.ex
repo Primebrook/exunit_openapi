@@ -30,10 +30,17 @@ defmodule ExUnitOpenAPI.TypeInferrer do
   @date_regex ~r/^\d{4}-\d{2}-\d{2}$/
   @datetime_regex ~r/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/
 
+  # Maximum recursion depth to prevent stack overflow on deeply nested structures
+  @max_depth 50
+
   @type json_schema :: map()
 
   @doc """
   Infers a JSON Schema from an Elixir value.
+
+  An optional `depth` parameter limits recursion to prevent stack overflow
+  on deeply nested structures. When max depth is reached, returns an empty
+  schema for nested values.
 
   ## Examples
 
@@ -49,37 +56,42 @@ defmodule ExUnitOpenAPI.TypeInferrer do
         }
       }
   """
-  @spec infer(term()) :: json_schema()
-  def infer(nil), do: %{"type" => "null"}
+  @spec infer(term(), non_neg_integer()) :: json_schema()
+  def infer(value, depth \\ 0)
 
-  def infer(value) when is_binary(value) do
+  # Stop recursion at max depth to prevent stack overflow
+  def infer(_value, depth) when depth >= @max_depth, do: %{}
+
+  def infer(nil, _depth), do: %{"type" => "null"}
+
+  def infer(value, _depth) when is_binary(value) do
     %{"type" => "string"}
     |> maybe_add_format(value)
   end
 
-  def infer(value) when is_integer(value), do: %{"type" => "integer"}
+  def infer(value, _depth) when is_integer(value), do: %{"type" => "integer"}
 
-  def infer(value) when is_float(value), do: %{"type" => "number"}
+  def infer(value, _depth) when is_float(value), do: %{"type" => "number"}
 
-  def infer(value) when is_boolean(value), do: %{"type" => "boolean"}
+  def infer(value, _depth) when is_boolean(value), do: %{"type" => "boolean"}
 
-  def infer(value) when is_list(value) do
+  def infer(value, depth) when is_list(value) do
     %{
       "type" => "array",
-      "items" => infer_array_items(value)
+      "items" => infer_array_items(value, depth + 1)
     }
   end
 
-  def infer(value) when is_map(value) do
+  def infer(value, depth) when is_map(value) do
     %{
       "type" => "object",
-      "properties" => infer_properties(value)
+      "properties" => infer_properties(value, depth + 1)
     }
   end
 
-  def infer(value) when is_tuple(value), do: %{"type" => "array"}
-  def infer(value) when is_atom(value), do: %{"type" => "string"}
-  def infer(_value), do: %{}
+  def infer(value, _depth) when is_tuple(value), do: %{"type" => "array"}
+  def infer(value, _depth) when is_atom(value), do: %{"type" => "string"}
+  def infer(_value, _depth), do: %{}
 
   @doc """
   Merges multiple schemas into one, combining their properties.
@@ -131,20 +143,20 @@ defmodule ExUnitOpenAPI.TypeInferrer do
 
   # Private functions
 
-  defp infer_array_items([]), do: %{}
+  defp infer_array_items([], _depth), do: %{}
 
-  defp infer_array_items(items) when is_list(items) do
+  defp infer_array_items(items, depth) when is_list(items) do
     items
-    |> Enum.map(&infer/1)
+    |> Enum.map(&infer(&1, depth))
     |> merge_schemas()
   end
 
-  defp infer_array_items(_), do: %{}
+  defp infer_array_items(_, _depth), do: %{}
 
-  defp infer_properties(map) when is_map(map) do
+  defp infer_properties(map, depth) when is_map(map) do
     map
     |> Enum.map(fn {key, value} ->
-      {to_string(key), infer(value)}
+      {to_string(key), infer(value, depth)}
     end)
     |> Enum.into(%{})
   end
@@ -188,18 +200,23 @@ defmodule ExUnitOpenAPI.TypeInferrer do
   defp boolean_string?(value) when value in ["true", "false"], do: true
   defp boolean_string?(_), do: false
 
-  defp deep_merge_schema(schema1, schema2) when is_map(schema1) and is_map(schema2) do
+  defp deep_merge_schema(schema1, schema2, depth \\ 0)
+
+  # Stop recursion at max depth
+  defp deep_merge_schema(_schema1, schema2, depth) when depth >= @max_depth, do: schema2
+
+  defp deep_merge_schema(schema1, schema2, depth) when is_map(schema1) and is_map(schema2) do
     Map.merge(schema1, schema2, fn
       "properties", props1, props2 when is_map(props1) and is_map(props2) ->
-        Map.merge(props1, props2, fn _k, v1, v2 -> deep_merge_schema(v1, v2) end)
+        Map.merge(props1, props2, fn _k, v1, v2 -> deep_merge_schema(v1, v2, depth + 1) end)
 
       "items", items1, items2 when is_map(items1) and is_map(items2) ->
-        deep_merge_schema(items1, items2)
+        deep_merge_schema(items1, items2, depth + 1)
 
       _key, _v1, v2 ->
         v2
     end)
   end
 
-  defp deep_merge_schema(_schema1, schema2), do: schema2
+  defp deep_merge_schema(_schema1, schema2, _depth), do: schema2
 end
